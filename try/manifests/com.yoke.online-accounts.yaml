@@ -1,0 +1,46 @@
+manifest: 1
+id: com.yoke.online-accounts
+protocol: 1
+needs:
+  - secret:clients
+  - secret:tokens
+streams:
+  - id: oauth.status
+    tolerates_loss: true
+commands:
+  - id: oauth.login
+  - id: oauth.logout
+queries:
+  - id: oauth.accounts
+  - id: oauth.token
+occurrences:
+  - id: oauth.signed_in
+  - id: oauth.sign_in_again
+  - id: oauth.login.failed
+rewrites:
+  - tokens
+capabilities:
+  - name: query.oauth.accounts.answer
+    governs:
+      query: oauth.accounts
+  - name: query.oauth.token.answer
+    governs:
+      query: oauth.token
+  - name: command.oauth.login.accept
+    governs:
+      command: oauth.login
+  - name: command.oauth.logout.accept
+    governs:
+      command: oauth.logout
+  - name: stream.oauth.status.publish
+    governs:
+      stream: oauth.status
+  - name: event.oauth.signed_in.report
+    governs:
+      occurrence: oauth.signed_in
+  - name: event.oauth.sign_in_again.report
+    governs:
+      occurrence: oauth.sign_in_again
+  - name: event.oauth.login.failed.report
+    governs:
+      occurrence: oauth.login.failed

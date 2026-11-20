@@ -1,0 +1,8 @@
+plugins:
+  - id: com.yoke.online-accounts
+    unit: online-accounts
+    source: ..
+    tag: null
+    arch: x86_64
+    digest: sha256:551db2ec55fc0b2e6992d4fe322e1d5a1359395286daf7b2890025dabef71564
+    taken: 2026-11-20T17:22:02Z

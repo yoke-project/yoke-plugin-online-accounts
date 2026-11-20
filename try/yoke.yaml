@@ -1,0 +1,16 @@
+model: 1
+id: com.yoke.online-accounts-try
+version: 0.1.0
+arch: x86_64
+core: ">=0.17.0"
+channels:
+  panel:
+    transport: local
+    clients: single
+units:
+  online-accounts:
+    kind: plugin
+    plugin: com.yoke.online-accounts
+    exec: components/plugins/online-accounts
+    args: ["--clients", "${bind.clients}", "--tokens", "${bind.tokens}"]
+    digest: sha256:551db2ec55fc0b2e6992d4fe322e1d5a1359395286daf7b2890025dabef71564

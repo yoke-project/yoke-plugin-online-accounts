@@ -1,0 +1,9 @@
+plugin: 1
+id: com.yoke.online-accounts
+language: rust
+program: online-accounts
+manifest: plugin/com.yoke.online-accounts.yaml
+build:
+  in: plugin/
+  run: cargo build --release --target "$YOKE_RUST_TARGET" && cp "target/$YOKE_RUST_TARGET/release/online-accounts" "$YOKE_OUT/online-accounts"
+architectures: [x86_64, aarch64]

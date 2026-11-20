@@ -1,0 +1,33 @@
+[package]
+name = "online-accounts"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "online_accounts"
+path = "src/lib.rs"
+
+[[bin]]
+name = "online-accounts"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "io-util"] }
+async-trait = "0.1"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+url = "2"
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+# The library at the commit that carries a question's asker and a secret its unit rewrites, until the release
+# that publishes them.
+yoke-sdk = { git = "https://github.com/yoke-project/yoke-sdk-rust", rev = "2dbe67f" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
+
+# A Plugin is a program of its own, never a member of a workspace around it.
+[workspace]
