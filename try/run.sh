@@ -80,7 +80,12 @@ for capability in $(sed -n 's/^  - name: //p' "$manifest"); do
   yoke plugin grant "$plugin" "$capability" --instance "$instance" > /dev/null
 done
 yoke unit restart "$unit" --instance "$instance" > /dev/null
-sleep 1
+# The unit holds its grants once a question it was granted is answered, and not before: the incarnation
+# admitted before the grants refuses it.
+for _ in $(seq 1 60); do
+  yoke unit ask "$unit" oauth.accounts --instance "$instance" > /dev/null 2>&1 && break
+  sleep 0.5
+done
 section() { awk -v s="$1:" '$0 == s {on=1; next} /^[a-z]/ {on=0} on && /^  - id: / {print $3}' "$manifest"; }
 follow_args+=(--ask oauth.accounts)
 for s in $(section streams); do follow_args+=(--stream "$s"); done
