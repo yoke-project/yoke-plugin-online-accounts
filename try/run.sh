@@ -37,15 +37,32 @@ if ! cmp -s "$here/../plugin/target/release/$unit" "$here/components/plugins/$un
   cp "$here/../plugin/target/release/$unit" "$here/components/plugins/$unit"
   cp "$manifest" "$here/manifests/"
 fi
-yoke-compose set "units.$unit.digest" "sha256:$(sha256sum "$here/components/plugins/$unit" | cut -d' ' -f1)" --dir "$here" > /dev/null
+# The package is made from a copy in the world, so the digest and the version written into it leave
+# try/yoke.yaml as it is written.
+project="$world/project"
+rm -rf "$project" && mkdir -p "$project"
+cp -r "$here/yoke.yaml" "$here/plugins.yaml" "$here/components" "$here/manifests" "$project/"
+yoke-compose set "units.$unit.digest" "sha256:$(sha256sum "$project/components/plugins/$unit" | cut -d' ' -f1)" --dir "$project" > /dev/null
+# An installed version is never replaced: a package that changed is installed under a version of its own,
+# named by what it carries, and the instance is moved to it. Without this a changed yoke.yaml or a rebuilt
+# Plugin would never reach an instance that already exists.
+written="$(sed -n 's/^version: //p' "$project/yoke.yaml")"
+version="$written-try-$(cat "$project/yoke.yaml" "$project/plugins.yaml" "$project/manifests/"* | sha256sum | cut -c1-12)"
+yoke-compose set version "$version" --dir "$project" > /dev/null
 cargo build --release --quiet --manifest-path "$here/follow/Cargo.toml"
 rm -f "$world/out/"*.yoke
-yoke-compose build --dir "$here" --out "$world/out" > /dev/null
+yoke-compose build --dir "$project" --out "$world/out" > /dev/null
 yoke instance stop "$instance" > /dev/null 2>&1 || true
-yoke app remove "$app" > /dev/null 2>&1 || true
 yoke app install "$world/out/"*.yoke > /dev/null
-if ! yoke instance show "$instance" > /dev/null 2>&1; then
-  yoke instance create "$app" --name "$instance" > /dev/null
+if shown="$(yoke instance show "$instance" 2>/dev/null)"; then
+  was="$(sed -n 's/^version: //p' <<<"$shown")"
+  if [[ "$was" != "$version" ]]; then
+    yoke instance set-version "$instance" "$version" > /dev/null
+    # A pre-release is never pruned: the version the instance leaves is removed by name.
+    yoke app remove "$app" --version "$was" > /dev/null
+  fi
+else
+  yoke instance create "$app" --name "$instance" --version "$version" > /dev/null
   # No account yet: the secret the unit rewrites starts as an empty record.
   echo '{}' | yoke instance set-secret "$instance" tokens > /dev/null
 fi

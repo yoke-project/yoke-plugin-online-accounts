@@ -12,7 +12,9 @@ another application never takes this directory.
 
 A unit's secrets are an installed instance's, so the application runs as one rather than as a run of a
 directory: the world under `.world/` keeps it, and an account signed in stays signed in from one run to the
-next. `--fresh` forgets it.
+next. `--fresh` forgets it. An installed version is never replaced, so every run that changed the
+package — `yoke.yaml`, or the Plugin rebuilt — installs it as `<version>-try-<digest>` and moves the
+instance to it; the version it leaves is removed.
 
 The programs of Yoke 0.17.0 or later are installed from the module proxy:
 
