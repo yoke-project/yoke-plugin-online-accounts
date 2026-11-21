@@ -10,14 +10,16 @@ Graph and Google Calendar with the tokens it asks for, and holds no OAuth code o
 | questions | `oauth.accounts` `{}` (the accounts the asker is given, each with where it stands), `oauth.token` `{account, scopes?}` (an access token, renewed first where it runs out within a minute) |
 | commands | `oauth.login` `{provider, scopes?}`, `oauth.logout` `{account}` |
 | streams | `oauth.status`: every account and where it stands, and every sign-in in progress with its page and its code, at every change — never a token |
-| occurrences | `oauth.signed_in` (10), `oauth.login.failed` (30), `oauth.sign_in_again` (40) |
+| occurrences | `oauth.signed_in` (10; 30 when a scope asked was not granted), `oauth.login.failed` (30), `oauth.sign_in_again` (40) |
 | needs | `secret:clients`, `secret:tokens` — the second one rewritten by the unit itself |
 
 Every payload is JSON and states `schema`. An account's identity is `<provider>:<username>`, the username
 being who the provider says signed in. An account stands `valid`, `expiring` or `sign_in_again`.
 
 **Signing in.** `oauth.login` starts a sign-in and is acknowledged with what the person must do; the stream
-shows it until it ends, and an occurrence says how it ended.
+shows it until it ends, and an occurrence says how it ended. A provider may grant less than was asked —
+Google lets the person untick a scope: the account keeps what was granted, and `oauth.signed_in` names what
+was not in `withheld` and in its line, at severity 30.
 
 | Provider | How | What the person does |
 | --- | --- | --- |

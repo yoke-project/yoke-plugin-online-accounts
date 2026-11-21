@@ -434,6 +434,7 @@ async fn a_device_sign_in_shows_its_code_then_keeps_the_account() {
     assert_eq!(shown["logins"][0]["method"], "device_code");
     let detail = occurrence(&mut b.happened, SIGNED_IN).await;
     assert_eq!(detail["account"], "microsoft:ada@example.org");
+    assert_eq!(detail["withheld"], json!([]));
     let after = b.online.record().await;
     assert!(after["logins"].as_array().unwrap().is_empty());
     assert_eq!(after["accounts"][0]["state"], "valid");
@@ -446,6 +447,42 @@ async fn a_device_sign_in_shows_its_code_then_keeps_the_account() {
     assert_eq!(
         rested["accounts"][0]["scopes"],
         json!(["openid", "offline_access", "Calendars.Read"])
+    );
+}
+
+#[tokio::test]
+async fn a_sign_in_granted_less_than_asked_keeps_what_was_granted_and_says_what_was_not() {
+    let mut b = bench(
+        "",
+        &[],
+        Box::new(|url, _| {
+            if url.ends_with("/devicecode") {
+                return (
+                    200,
+                    json!({ "device_code": "dc", "user_code": "ABCD-EFGH", "verification_uri": "https://microsoft.com/devicelogin", "expires_in": 900, "interval": 1 }),
+                );
+            }
+            (
+                200,
+                json!({ "access_token": "at", "expires_in": 3600, "refresh_token": "rt", "scope": "openid offline_access", "id_token": id_token("ada@example.org") }),
+            )
+        }),
+    );
+    b.online
+        .act(
+            LOGIN,
+            br#"{"provider":"microsoft","scopes":["Calendars.Read"]}"#,
+        )
+        .await
+        .unwrap();
+    let detail = occurrence(&mut b.happened, SIGNED_IN).await;
+    assert_eq!(detail["withheld"], json!(["Calendars.Read"]));
+    let line = detail["line"].as_str().unwrap();
+    assert!(line.contains("was not granted Calendars.Read"), "{line}");
+    let after = b.online.record().await;
+    assert_eq!(
+        after["accounts"][0]["scopes"],
+        json!(["openid", "offline_access"])
     );
 }
 

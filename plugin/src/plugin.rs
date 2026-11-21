@@ -800,11 +800,12 @@ impl Online {
         let kept = match got {
             Ok(t) => match (t.username, t.refresh_token) {
                 (Some(username), Some(refresh_token)) => {
+                    let scopes = t.scopes.unwrap_or_else(|| asked.to_vec());
                     let account = Account {
                         id: format!("{}:{username}", p.name),
                         provider: p.name.clone(),
                         username,
-                        scopes: t.scopes.unwrap_or_else(|| asked.to_vec()),
+                        scopes,
                         refresh_token,
                     };
                     let mut book = self.book.lock().await;
@@ -813,8 +814,18 @@ impl Online {
                         expires_at: t.expires_at,
                     };
                     let aid = account.id.clone();
+                    // A provider may grant less than was asked, as Google does when the person unticks a
+                    // scope: the account keeps what was granted, and the sign-in says what was not, since
+                    // oauth.token refuses it by the same comparison.
+                    let withheld: Vec<String> = asked
+                        .iter()
+                        .filter(|s| !p.always.contains(s) && !account.scopes.contains(s))
+                        .cloned()
+                        .collect();
                     book.signed_in(account, live);
-                    self.write(&book).map(|_| aid).map_err(|e| message(&e))
+                    self.write(&book)
+                        .map(|_| (aid, withheld))
+                        .map_err(|e| message(&e))
                 }
                 (None, _) => Err(format!("{} did not say who signed in", p.name)),
                 (_, None) => Err(format!("{} gave no token that renews", p.name)),
@@ -824,9 +835,19 @@ impl Online {
         self.logins.lock().unwrap().remove(id);
         self.changed();
         match kept {
-            Ok(account) => {
-                let line = format!("{account} signed in");
-                self.occurred(SIGNED_IN, 10, line.clone(), json!({ "schema": SCHEMA, "line": line, "login": id, "account": account, "provider": p.name }));
+            Ok((account, withheld)) => {
+                let (severity, line) = if withheld.is_empty() {
+                    (10, format!("{account} signed in"))
+                } else {
+                    (
+                        30,
+                        format!(
+                            "{account} signed in, but was not granted {}: sign in again granting it",
+                            withheld.join(", ")
+                        ),
+                    )
+                };
+                self.occurred(SIGNED_IN, severity, line.clone(), json!({ "schema": SCHEMA, "line": line, "login": id, "account": account, "provider": p.name, "withheld": withheld }));
             }
             Err(why) => {
                 let line = format!("the sign-in with {} failed: {why}", p.name);
