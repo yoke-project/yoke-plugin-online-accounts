@@ -22,9 +22,7 @@ url = "2"
 sha2 = "0.10"
 base64 = "0.22"
 getrandom = "0.2"
-# The library at the commit that carries a question's asker and a secret its unit rewrites, until the release
-# that publishes them.
-yoke-sdk = { git = "https://github.com/yoke-project/yoke-sdk-rust", rev = "2dbe67f" }
+yoke-sdk = "=0.10.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
