@@ -11,7 +11,7 @@ set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 results="${1:-$root/.results}"
-mkdir -p "$results"
+mkdir -p "$results" && results="$(cd "$results" && pwd)" # absolute: the script moves into try/
 date -u +%Y-%m-%dT%H:%M:%SZ > "$results/started"
 CASE=yoke-plugin-online-accounts:the-watch.01
 
@@ -45,6 +45,7 @@ echo "$release" > "$results/release"
 
 cd "$root/try" || finish "FAIL  $CASE — no try/"
 rm -f components/plugins/online-accounts manifests/com.yoke.online-accounts.yaml
+mkdir -p components/plugins # empty, so not in a checkout
 said="$(yoke-compose update plugin com.yoke.online-accounts --yes 2>&1)" || finish "FAIL  $CASE — the Plugin is not taken under $release: $(tail -n 2 <<<"$said" | tr '\n' ' ')"
 said="$(yoke-compose build --out "$work/out" 2>&1)" || finish "FAIL  $CASE — the application is not packaged under $release: $(tail -n 2 <<<"$said" | tr '\n' ' ')"
 said="$(yoke app install "$work/out/"*.yoke 2>&1)" || finish "FAIL  $CASE — the package is not installed under $release: $(tail -n 2 <<<"$said" | tr '\n' ' ')"
