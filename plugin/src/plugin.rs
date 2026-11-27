@@ -6,7 +6,8 @@
 //! - **`oauth.accounts` lists the accounts the asker is given**, each with where it stands.
 //! - **`oauth.status` is the whole record at every change**: every account and where it stands, and every
 //!   sign-in in progress with the page and the code a person needs — never a token.
-//! - **`oauth.login` starts a sign-in and `oauth.logout` forgets an account.** A sign-in finishes on its own
+//! - **`oauth.login` starts a sign-in and `oauth.logout` forgets an account**, revoking its grant at a provider
+//!   that offers revocation and saying so where one does not. A sign-in finishes on its own
 //!   time, after the command is acknowledged: the stream shows it until it ends, and an occurrence says how.
 //! - **A refresh token rests in the secret `tokens`**, rewritten by this unit at every change of it.
 
@@ -756,12 +757,34 @@ impl Online {
             LOGOUT => {
                 let i: AccountInput = input(command, payload)?;
                 let mut book = self.book.lock().await;
-                book.remove(&i.account)
+                let gone = book
+                    .remove(&i.account)
                     .ok_or_else(|| Error::NotFound(format!("there is no account {}", i.account)))?;
                 self.write(&book)?;
                 drop(book);
                 self.changed();
-                Ok(format!("{} forgotten", i.account))
+                // Forgotten here first, whatever the provider says: the person asked for it to go.
+                let Some(provider) = self.providers.get(&gone.provider) else {
+                    return Ok(format!("{} forgotten", i.account));
+                };
+                Ok(
+                    match identity::revoke(self.http.as_ref(), provider, &gone.refresh_token).await {
+                        identity::Revoked::Done => format!(
+                            "{} forgotten, and its grant revoked at {}",
+                            i.account, provider.name
+                        ),
+                        identity::Revoked::Unoffered => format!(
+                            "{} forgotten here; {} offers no revocation a client can call, so the grant \
+                             stands there until the person withdraws it",
+                            i.account, provider.name
+                        ),
+                        identity::Revoked::Failed(why) => format!(
+                            "{} forgotten here; {} could not be told ({why}), so the grant stands there \
+                             until the person withdraws it",
+                            i.account, provider.name
+                        ),
+                    },
+                )
             }
             other => Err(Error::Invalid(format!(
                 "{other} is not a command of {PLUGIN}"

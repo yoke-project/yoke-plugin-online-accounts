@@ -72,7 +72,12 @@ granted is refused `scope.missing`.
 A grant the provider no longer honours — revoked, expired, a password changed — marks the account
 `sign_in_again` and is said once; it is not tried again until the person signs in again.
 
-Not yet: other providers, and revoking a token at the provider on logout.
+`oauth.logout` forgets the account here first, then revokes its grant where the provider offers revocation:
+Google does, and the answer says it was revoked. Microsoft's identity platform offers a client nothing to call,
+so the answer says the grant stands there until the person withdraws it from their account; it says the same
+when Google could not be reached.
+
+Not yet: other providers.
 
 **It needs Yoke 0.17.0**, the release in which a unit rewrites its own secret and is told who asked; until
 that release is published the Plugin builds on the Rust library at the commit that carries both.

@@ -65,8 +65,13 @@ impl Http for Network {
             .bytes()
             .await
             .map_err(|e| format!("{url} answered nothing whole: {e}"))?;
-        let value = serde_json::from_slice(&bytes)
-            .map_err(|_| format!("{url} answered {status} with no JSON"))?;
+        // A revocation is answered with no body at all.
+        let value = if bytes.iter().all(u8::is_ascii_whitespace) {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes)
+                .map_err(|_| format!("{url} answered {status} with no JSON"))?
+        };
         Ok((status, value))
     }
 }
@@ -97,6 +102,9 @@ pub struct Provider {
     pub device_url: String,
     pub authorize_url: String,
     pub token_url: String,
+    /// Where a refresh token is revoked (RFC 7009); empty where the provider offers no revocation a client
+    /// can call.
+    pub revoke_url: String,
     /// Asked at every sign-in: who the person is, and a token that renews.
     pub always: Vec<String>,
     /// Added to the page's address, for a token that renews.
@@ -111,6 +119,9 @@ pub fn microsoft(tenant: &str) -> Provider {
         device_url: format!("{base}/devicecode"),
         authorize_url: format!("{base}/authorize"),
         token_url: format!("{base}/token"),
+        // The identity platform revokes a grant from the account's own page or by an administrator, and
+        // offers a public client nothing to call.
+        revoke_url: String::new(),
         always: vec![
             "openid".into(),
             "profile".into(),
@@ -128,6 +139,7 @@ pub fn google() -> Provider {
         device_url: String::new(),
         authorize_url: "https://accounts.google.com/o/oauth2/v2/auth".into(),
         token_url: "https://oauth2.googleapis.com/token".into(),
+        revoke_url: "https://oauth2.googleapis.com/revoke".into(),
         always: vec!["openid".into(), "email".into()],
         authorize_extra: vec![
             ("access_type".into(), "offline".into()),
@@ -253,6 +265,38 @@ fn client_form<'a>(c: &Client, mut form: Vec<(&'a str, String)>) -> Vec<(&'a str
 }
 
 /// Renews an access token with a refresh token.
+/// What revoking a refresh token came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Revoked {
+    /// The provider no longer honours the grant: it revoked it, or it already held it for nothing.
+    Done,
+    /// The provider offers no revocation a client can call.
+    Unoffered,
+    /// The provider could not be told, and said or failed as given.
+    Failed(String),
+}
+
+/// Revokes a refresh token at the provider (RFC 7009), where it offers revocation.
+pub async fn revoke(http: &dyn Http, p: &Provider, refresh_token: &str) -> Revoked {
+    if p.revoke_url.is_empty() {
+        return Revoked::Unoffered;
+    }
+    let form = [
+        ("token", refresh_token.to_string()),
+        ("token_type_hint", "refresh_token".to_string()),
+    ];
+    match http.post_form(&p.revoke_url, &form).await {
+        Ok((status, _)) if (200..300).contains(&status) => Revoked::Done,
+        // A token the provider already holds for nothing is one no longer honoured.
+        Ok((_, v)) if v["error"] == "invalid_token" => Revoked::Done,
+        Ok((status, v)) => Revoked::Failed(match refused(status, &v) {
+            Refused::Grant(said) | Refused::Other(said) => said,
+            _ => format!("the provider answered {status}"),
+        }),
+        Err(why) => Revoked::Failed(why),
+    }
+}
+
 pub async fn renew(
     http: &dyn Http,
     p: &Provider,
