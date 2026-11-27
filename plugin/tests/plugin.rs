@@ -657,3 +657,89 @@ async fn the_unit_renews_what_runs_out_on_its_own() {
     b.online.renew_due().await;
     assert_eq!(b.provider.grants("refresh_token"), 1);
 }
+
+/// A provider that renews, and answers a revocation as given.
+fn revoking(status: u16, body: Value) -> Answer {
+    let renew = renewed(None);
+    Box::new(move |url, form| {
+        if url.ends_with("/revoke") {
+            (status, body.clone())
+        } else {
+            renew(url, form)
+        }
+    })
+}
+
+#[tokio::test]
+async fn a_logout_revokes_the_grant_where_the_provider_offers_revocation() {
+    let b = bench(
+        &held(&[account("google:ada@example.org", "rg")]),
+        &[],
+        revoking(200, Value::Null),
+    );
+    let line = b
+        .online
+        .act(LOGOUT, br#"{"account":"google:ada@example.org"}"#)
+        .await
+        .unwrap();
+    assert!(line.contains("revoked at google"), "{line}");
+    let sent = b.provider.sent();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0, "https://oauth2.googleapis.com/revoke");
+    assert_eq!(sent[0].1["token"], "rg");
+    assert_eq!(sent[0].1["token_type_hint"], "refresh_token");
+}
+
+#[tokio::test]
+async fn a_logout_where_the_provider_offers_no_revocation_says_the_grant_stands() {
+    let b = bench(
+        &held(&[account("microsoft:ada@example.org", "rm")]),
+        &[],
+        revoking(200, Value::Null),
+    );
+    let line = b
+        .online
+        .act(LOGOUT, br#"{"account":"microsoft:ada@example.org"}"#)
+        .await
+        .unwrap();
+    assert!(
+        line.contains("offers no revocation") && line.contains("stands there"),
+        "{line}"
+    );
+    assert!(b.provider.sent().is_empty());
+}
+
+#[tokio::test]
+async fn a_revocation_that_fails_still_forgets_the_account_and_says_the_grant_stands() {
+    let b = bench(
+        &held(&[account("google:ada@example.org", "rg")]),
+        &[],
+        revoking(503, json!({ "error": "temporarily_unavailable" })),
+    );
+    let line = b
+        .online
+        .act(LOGOUT, br#"{"account":"google:ada@example.org"}"#)
+        .await
+        .unwrap();
+    assert!(
+        line.contains("could not be told") && line.contains("stands there"),
+        "{line}"
+    );
+    let rested: Value = serde_json::from_str(&std::fs::read_to_string(&b.tokens).unwrap()).unwrap();
+    assert!(rested["accounts"].as_array().unwrap().is_empty());
+
+    let b = bench(
+        &held(&[account("google:ada@example.org", "rg")]),
+        &[],
+        revoking(400, json!({ "error": "invalid_token" })),
+    );
+    let line = b
+        .online
+        .act(LOGOUT, br#"{"account":"google:ada@example.org"}"#)
+        .await
+        .unwrap();
+    assert!(
+        line.contains("revoked at google"),
+        "a token already held for nothing: {line}"
+    );
+}
